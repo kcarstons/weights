@@ -11,6 +11,7 @@ git lfs install
 git lfs track "*.safetensors"
 git lfs track "*.pt"
 git lfs track "*.bin"
+git lfs track "*.onnx"
 
 # Stage your tracking rules and source files
 git add .gitattributes

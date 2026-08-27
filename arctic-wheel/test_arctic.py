@@ -1,3 +1,4 @@
+
 import snowflake_arctic_embed_m_v1_5
 
 
@@ -7,22 +8,33 @@ model = snowflake_arctic_embed_m_v1_5.load()
 docs = [
     "Dogs are household pets",
     "The Eiffel Tower is in Paris",
-    "Cats sleep a lot"
+    "Cats sleep a lot",
+    "Vendor failed to implement adequate access controls"
 ]
 
 
 queries = [
-    "What animals are common pets?"
+    "Animals that are common household pets"
 ]
 
 
-q = model.encode(
-    queries,
-    prompt_name="query"
+try:
+    q = model.encode(
+        queries,
+        normalize_embeddings=True,
+        prompt_name="query"
+    )
+except Exception:
+    q = model.encode(
+        queries,
+        normalize_embeddings=True
+    )
+
+
+d = model.encode(
+    docs,
+    normalize_embeddings=True
 )
-
-
-d = model.encode(docs)
 
 
 scores = q @ d.T
@@ -30,6 +42,7 @@ scores = q @ d.T
 
 print()
 print("SUCCESS")
+print("Embedding dimension:", len(q[0]))
 print()
 
 
@@ -38,3 +51,4 @@ for doc, score in zip(docs, scores[0]):
         round(float(score), 4),
         doc
     )
+

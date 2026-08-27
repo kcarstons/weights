@@ -2,24 +2,57 @@
 
 set -euo pipefail
 
-PACKAGE="snowflake_arctic_embed_m_v1_5"
+
+############################################
+# CHANGE THIS ONLY
+############################################
+
+MODEL_REPO="${1:-Snowflake/snowflake-arctic-embed-l}"
+
+# Examples:
+# ./build_arctic_offline.sh Snowflake/snowflake-arctic-embed-m-v1.5
+
+
+
+############################################
+# DERIVED NAMES
+############################################
+
+MODEL_NAME=$(basename "${MODEL_REPO}")
+
+PACKAGE=$(echo "${MODEL_NAME}" \
+    | tr '-' '_' \
+    | tr '.' '_')
+
 
 SRC_DIR="src/${PACKAGE}"
 MODEL_DIR="${SRC_DIR}/model"
 
-rm -rf build dist *.egg-info
+
+############################################
+# CLEAN
+############################################
+
+rm -rf build *.egg-info
+mkdir -p dist
+
 rm -rf src/*.egg-info
 rm -rf "${SRC_DIR}"
 
-mkdir -p "${MODEL_DIR}/1_Pooling"
-mkdir -p "${MODEL_DIR}/2_Normalize"
 
+mkdir -p "${MODEL_DIR}"
+echo "${MODEL_REPO}" > "${MODEL_DIR}/MODEL_SOURCE.txt"
 mkdir -p "${SRC_DIR}"
 
 
+############################################
+# PYPROJECT
+############################################
+
 echo "Creating pyproject.toml"
 
-cat > pyproject.toml <<'EOF'
+
+cat > pyproject.toml <<EOF
 [build-system]
 requires = [
     "setuptools>=68",
@@ -30,7 +63,7 @@ build-backend = "setuptools.build_meta"
 
 
 [project]
-name = "snowflake-arctic-embed-m-v1-5"
+name = "${PACKAGE}"
 version = "1.0.0"
 requires-python = ">=3.12,<3.13"
 
@@ -44,16 +77,21 @@ where = ["src"]
 
 
 [tool.setuptools.package-data]
-snowflake_arctic_embed_m_v1_5 = [
+${PACKAGE} = [
     "model/**/*"
 ]
 EOF
 
 
 
+############################################
+# WRAPPER
+############################################
+
 echo "Creating wrapper"
 
-cat > "${SRC_DIR}/__init__.py" <<'EOF'
+
+cat > "${SRC_DIR}/__init__.py" <<EOF
 from pathlib import Path
 
 MODEL_PATH = Path(__file__).resolve().parent / "model"
@@ -77,41 +115,37 @@ EOF
 
 
 
-echo "Downloading model"
+############################################
+# DOWNLOAD MODEL
+############################################
 
-BASE_URL="https://huggingface.co/Snowflake/snowflake-arctic-embed-m-v1.5/resolve/main"
+echo "Downloading ${MODEL_REPO}"
 
 
-FILES=(
-"config_sentence_transformers.json"
-"modules.json"
+python3.12 -m pip install \
+    "huggingface_hub==0.27.0" \
+    "build==1.2.2.post1" \
+    "setuptools==75.6.0" \
+    "wheel==0.45.1"
 
-"config.json"
-"model.safetensors"
 
-"tokenizer.json"
-"tokenizer_config.json"
-"special_tokens_map.json"
-"vocab.txt"
+python3.12 - <<EOF
 
-"1_Pooling/config.json"
+from huggingface_hub import snapshot_download
+
+snapshot_download(
+    repo_id="${MODEL_REPO}",
+    local_dir="${MODEL_DIR}",
+    local_dir_use_symlinks=False
 )
 
-
-for FILE in "${FILES[@]}"
-do
-    echo "Downloading ${FILE}"
-
-    curl \
-        -L \
-        --fail \
-        --retry 3 \
-        "${BASE_URL}/${FILE}?download=true" \
-        -o "${MODEL_DIR}/${FILE}"
-
-done
+EOF
 
 
+
+############################################
+# SHOW CONTENTS
+############################################
 
 echo
 echo "MODEL CONTENTS"
@@ -120,26 +154,38 @@ find "${MODEL_DIR}" -type f
 
 
 
+############################################
+# BUILD WHEEL
+############################################
+
 echo
 echo "Building wheel"
 
 
-python3.12 -m pip install --upgrade \
-    build \
-    setuptools \
-    wheel
+python3.12 -m pip install \
+    "huggingface_hub==0.27.0" \
+    "build==1.2.2.post1" \
+    "setuptools==75.6.0" \
+    "wheel==0.45.1"
 
 
 python3.12 -m build --wheel
 
 
 
+############################################
+# TEST ENVIRONMENT
+############################################
+
 echo
 echo "Creating test environment"
 
+
 rm -rf test-env
 
+
 python3.12 -m venv test-env
+
 
 source test-env/bin/activate
 
@@ -154,37 +200,56 @@ pip install \
 
 
 
-pip install \
-    dist/snowflake_arctic_embed_m_v1_5-1.0.0-py3-none-any.whl
+############################################
+# INSTALL WHEEL
+############################################
+
+pip install dist/${PACKAGE}-1.0.0-py3-none-any.whl
 
 
 
-cat > test_arctic.py <<'EOF'
-import snowflake_arctic_embed_m_v1_5
+############################################
+# TEST
+############################################
+
+cat > test_arctic.py <<EOF
+
+import ${PACKAGE}
 
 
-model = snowflake_arctic_embed_m_v1_5.load()
+model = ${PACKAGE}.load()
 
 
 docs = [
     "Dogs are household pets",
     "The Eiffel Tower is in Paris",
-    "Cats sleep a lot"
+    "Cats sleep a lot",
+    "Vendor failed to implement adequate access controls"
 ]
 
 
 queries = [
-    "What animals are common pets?"
+    "Animals that are common household pets"
 ]
 
 
-q = model.encode(
-    queries,
-    prompt_name="query"
+try:
+    q = model.encode(
+        queries,
+        normalize_embeddings=True,
+        prompt_name="query"
+    )
+except Exception:
+    q = model.encode(
+        queries,
+        normalize_embeddings=True
+    )
+
+
+d = model.encode(
+    docs,
+    normalize_embeddings=True
 )
-
-
-d = model.encode(docs)
 
 
 scores = q @ d.T
@@ -192,6 +257,7 @@ scores = q @ d.T
 
 print()
 print("SUCCESS")
+print("Embedding dimension:", len(q[0]))
 print()
 
 
@@ -200,12 +266,17 @@ for doc, score in zip(docs, scores[0]):
         round(float(score), 4),
         doc
     )
-EOF
 
+EOF
 
 
 python test_arctic.py
 
+
+
+############################################
+# DONE
+############################################
 
 echo
 echo "DONE"
