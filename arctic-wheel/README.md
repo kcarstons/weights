@@ -55,8 +55,8 @@ Navigate into the arctic-wheel directory, make the script executable and run thi
 ```
 cd arctic-wheel
 chmod +x build_arctic_offline.sh
-./build_arctic_wheel.sh Snowflake/snowflake-arctic-embed-l
-./build_arctic_wheel.sh Snowflake/snowflake-arctic-embed-m-v1.5
+./build_arctic_offline.sh Snowflake/snowflake-arctic-embed-l
+./build_arctic_offline.sh Snowflake/snowflake-arctic-embed-m-v1.5
 ```
 
 This script will fetch model components, bundle them, build the .whl file inside dist/, create a virtual environment, and run an integration test.
